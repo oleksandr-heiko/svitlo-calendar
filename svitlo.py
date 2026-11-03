@@ -116,7 +116,7 @@ def build_ics(queue, state):
                 "BEGIN:VALARM",
                 "ACTION:DISPLAY",
                 "DESCRIPTION:Скоро вимкнуть світло",
-                "TRIGGER:-PT15M",
+                "TRIGGER:-PT10M",
                 "END:VALARM",
                 "END:VEVENT",
             ]
