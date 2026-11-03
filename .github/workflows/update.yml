@@ -1,0 +1,28 @@
+name: Оновити календарі
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency: { group: svitlo, cancel-in-progress: false }
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    environment: { name: github-pages }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: python -I svitlo.py
+      - name: Зберегти state.json
+        run: |
+          git config user.name "svitlo-bot"
+          git config user.email "svitlo-bot@users.noreply.github.com"
+          git add state.json
+          git diff --cached --quiet || git commit -m "Оновлення графіка" && git push
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: public }
+      - uses: actions/deploy-pages@v4
