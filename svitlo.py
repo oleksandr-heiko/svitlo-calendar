@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Графік погодинних відключень (Олександрійський район) -> календарі .ics.
 
-Графік на сьогодні бере із сайту kiroe.com.ua (там він з'являється навіть тоді,
-коли в Telegram його не виклали), а на інші дні — з публічної веб-версії
-Telegram-каналу «Світло Олександрійщини», для кожної дати найсвіжіший пост.
+Головне джерело — публічна веб-версія Telegram-каналу «Світло Олександрійщини»
+(для кожної дати найсвіжіший пост). Якщо на сьогодні в Telegram графіка немає,
+його бере із сайту kiroe.com.ua.
 Генерує по одному .ics на чергу.
 Стан (розклади за минулі дні) зберігається в state.json, бо веб-версія
 каналу показує лише ~20 останніх постів.
@@ -35,7 +35,8 @@ POST_RE = re.compile(
 # "За розпорядженням НЕК "Укренерго" 03.11.2026 внесено зміни / буде діяти"
 TARGET_RE = re.compile(r"Укренерго\W*\s+(\d{2})\.(\d{2})\.(\d{4})")
 QUEUE_RE = re.compile(r"Черга\s+(\d\.\d)\s*:\s*([0-9:,\s\-–]+)")
-SLOT_RE = re.compile(r"(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})")
+# "08:00-10:00" або коротко "08-10"
+SLOT_RE = re.compile(r"(\d{1,2})(?::(\d{2}))?\s*[-–]\s*(\d{1,2})(?::(\d{2}))?")
 
 
 def fetch(url):
@@ -94,9 +95,11 @@ def parse_posts(page):
         queues = {}
         for q, slots in QUEUE_RE.findall(text):
             queues[q] = [
-                [f"{int(a):02d}:{b}", f"{int(c):02d}:{d}"]
+                [f"{int(a):02d}:{b or '00'}", f"{int(c):02d}:{d or '00'}"]
                 for a, b, c, d in SLOT_RE.findall(slots)
             ]
+        if not queues:  # пост про ГОП тощо — без розкладу по чергах
+            continue
         posted = m.group(2)
         if day not in result or posted > result[day]["posted"]:
             result[day] = {"posted": posted, "queues": queues, "source": "Telegram"}
@@ -104,8 +107,14 @@ def parse_posts(page):
 
 
 def merge(state, fresh):
+    """Telegram має пріоритет: сайт лише заповнює дні, яких у Telegram немає."""
     for day, sched in fresh.items():
-        if day not in state or sched["posted"] >= state[day]["posted"]:
+        old = state.get(day)
+        if (
+            old is None
+            or old.get("source") == "сайт"
+            or (sched["source"] == "Telegram" and sched["posted"] >= old["posted"])
+        ):
             state[day] = sched
     cutoff = (datetime.now(KYIV) - timedelta(days=KEEP_DAYS)).strftime("%Y-%m-%d")
     return {d: s for d, s in sorted(state.items()) if d >= cutoff}
@@ -167,7 +176,6 @@ def build_ics(queue, state):
 def main():
     state = json.loads(STATE.read_text("utf-8")) if STATE.exists() else {}
     found = 0
-    # Спершу Telegram, потім сайт: свіжіший запис сайту перекриває сьогоднішній день
     for name, load in (("Telegram", lambda: parse_posts(fetch(CHANNEL_URL))), ("сайт", fetch_site)):
         try:
             fresh = load()
