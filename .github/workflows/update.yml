@@ -13,7 +13,10 @@ jobs:
     runs-on: ubuntu-latest
     environment: { name: github-pages }
     steps:
+      # запланований запуск інакше бере коміт на момент постановки в чергу,
+      # і push state.json падає, якщо попередній запуск уже закомітив новіший
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: python -I svitlo.py
@@ -25,4 +28,11 @@ jobs:
           git diff --cached --quiet || git commit -m "Оновлення графіка" && git push
       - uses: actions/upload-pages-artifact@v3
         with: { path: public }
-      - uses: actions/deploy-pages@v4
+      # GitHub Pages інколи разово не бачить артефакт — пробуємо ще раз
+      - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+      - if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
